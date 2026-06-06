@@ -116,4 +116,4 @@ Browser (Napster Web SDK — live video avatar)
 
 ---
 
-Built by Tercio Studios · Austin, TX · Napster Omniagent Hackathon 2026
+Built by Benjamin Villanueva · Austin, TX · Napster Omniagent Hackathon 2026
