@@ -25,8 +25,26 @@ const TOOL_SECRET = process.env.INTERNAL_API_SECRET || "change_me";
 const BASE = "https://companion-api.napster.com/public";
 
 // ── Middleware ──────────────────────────────────────────────────────────────
+const ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  "http://localhost:4173",
+  "https://delightful-wave-0853e2c0f.7.azurestaticapps.net",
+  // Add your custom domain here if you set one up
+];
+
 app.use(cors({
-  origin: "*",
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl, Postman, tool webhooks)
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    // Allow any localhost port for local dev
+    if (origin.startsWith("http://localhost:")) return callback(null, true);
+    // Allow any azurestaticapps.net subdomain
+    if (origin.endsWith(".azurestaticapps.net")) return callback(null, true);
+    // Allow any ngrok URL for local tunneling
+    if (origin.endsWith(".ngrok-free.app") || origin.endsWith(".ngrok.io")) return callback(null, true);
+    callback(new Error(`CORS blocked: ${origin}`));
+  },
   allowedHeaders: ["Content-Type", "ngrok-skip-browser-warning", "x-internal-secret"],
 }));
 app.use(express.json());

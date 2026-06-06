@@ -1,6 +1,10 @@
 # LocalDesk — AI Receptionist for Local Service Businesses
 ### Napster Omniagent API Hackathon Submission · May 18 – June 15, 2026
 
+**🔴 Live demo:** https://delightful-wave-0853e2c0f.7.azurestaticapps.net
+
+**📋 Judge setup guide:** [JUDGES.md](./JUDGES.md)
+
 ---
 
 ## What It Is
