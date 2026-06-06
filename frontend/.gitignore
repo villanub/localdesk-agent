@@ -1,0 +1,11 @@
+# Frontend-specific ignores (node_modules / dist caught by root .gitignore)
+
+# Vite cache
+.vite/
+*.tsbuildinfo
+
+# Local env overrides
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

@@ -1,0 +1,14 @@
+# Backend-specific ignores (node_modules etc. caught by root .gitignore)
+
+# Agent config written by setup.js — API IDs, never commit
+.agent-config.json
+
+# SQLite database files
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+data/
+
+# TypeScript (if added later)
+*.js.map
