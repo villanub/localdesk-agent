@@ -108,6 +108,7 @@ async function main() {
     receiveMessages: false,
     prompt:
       "Use this tool after you have collected the visitor's name, phone number, and service interest. " +
+      "The visitor_id is provided in your session context as visitor_id — always include it. " +
       "Before calling, confirm the details with the visitor: 'Just to confirm — I have your name as [name], phone as [phone], and you're interested in [service]. Is that right?' " +
       "Wait for explicit confirmation before calling. " +
       "Do NOT call if the visitor has not provided at least their name and phone number. " +

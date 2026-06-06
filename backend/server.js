@@ -142,7 +142,9 @@ app.post("/api/session", async (req, res) => {
   const { visitorId, visitorName, lastService } = req.body;
   if (!visitorId) return res.status(400).json({ error: "visitorId is required" });
 
-  const externalClientProfile = {};
+  const externalClientProfile = {
+    visitor_id: visitorId, // Always pass so agent includes it in tool calls
+  };
   if (visitorName) externalClientProfile.name = visitorName;
   if (lastService) externalClientProfile.lastService = lastService;
 
