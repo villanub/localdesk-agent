@@ -20,22 +20,34 @@ Every return visitor is **remembered by name** across sessions via persistent me
 | Criterion | How LocalDesk delivers |
 |---|---|
 | **Use of API (30%)** | WebRTC video avatar, persistent cross-session memory (`externalClientId`), explicit tool calling (lead capture, availability check, booking confirmation), `externalClientProfile` for personalization |
-| **Technical execution (25%)** | Full-stack: React + Node/Express + lowdb, all in a single `docker compose up`. Auto-provisions agent on first boot. |
+| **Technical execution (25%)** | Full-stack: React + Node/Express + lowdb. Auto-provisions agent on first boot. Deployed on Azure Container Apps + Azure Static Web Apps. |
 | **Creativity (25%)** | Solves a real daily problem for tens of thousands of local businesses. The "video receptionist that remembers you" is novel for the vertical. |
-| **Presentation (20%)** | Demo video: cold visit → warm return visit (memory) → booking confirmed → owner SMS |
+| **Presentation (20%)** | Demo flow: cold visit → booking confirmed → return visit with memory → leads dashboard |
+
+---
+
+## Live Deployment (Azure)
+
+| Service | URL |
+|---|---|
+| **Frontend** | https://delightful-wave-0853e2c0f.7.azurestaticapps.net |
+| **Backend** | https://localdesk-backend.calmsea-5724aa91.eastus.azurecontainerapps.io |
+| **Health** | https://localdesk-backend.calmsea-5724aa91.eastus.azurecontainerapps.io/health |
+| **Status** | https://localdesk-backend.calmsea-5724aa91.eastus.azurecontainerapps.io/api/status |
+| **Leads** | https://localdesk-backend.calmsea-5724aa91.eastus.azurecontainerapps.io/api/leads |
 
 ---
 
 ## Architecture
 
 ```
-Browser (React + Napster Web SDK)
+Azure Static Web App (React + Napster Web SDK)
         │  WebRTC (video/audio)
         ▼
   Napster Omniagent API
         │  Explicit tool webhooks (HTTPS POST)
         ▼
-  LocalDesk Backend (Node/Express)
+  Azure Container App (Node/Express backend)
         │
         ├── GET  /health             → Docker healthcheck
         ├── GET  /api/status         → Frontend readiness check
@@ -48,66 +60,28 @@ Browser (React + Napster Web SDK)
 
 ---
 
-## Quick Start (Judges)
-
-### Prerequisites
-- Docker Desktop running
-- A Napster Omniagent API key
-
-### 1. Clone and configure
-
-```bash
-git clone https://github.com/villanub/localdesk-agent.git
-cd localdesk-agent
-cp .env.example .env
-```
-
-Edit `.env` — the only required field is:
-```
-NAPSTER_API_KEY=your_key_here
-INTERNAL_API_SECRET=any_random_string
-```
-
-### 2. Start everything
-
-```bash
-docker compose up --build
-```
-
-**That's it.** On first boot, the backend automatically runs `setup.js` to create the companion, tools, and agent in your Napster account. The config is saved to a Docker volume so subsequent starts are instant.
-
-- Frontend → http://localhost:5173
-- Lead dashboard → http://localhost:3001/api/leads
-- Status → http://localhost:3001/api/status
-
-### 3. Enable tool webhooks (booking, lead capture)
-
-For tools to fire, Napster needs a public URL to POST back to. Run ngrok in a separate terminal:
-
-```bash
-ngrok http 3001
-```
-
-Add the URL to `.env`:
-```
-BACKEND_PUBLIC_URL=https://xxxxx.ngrok-free.app
-```
-
-Then restart:
-```bash
-docker compose down -v   # -v clears the volume so setup re-runs with the new URL
-docker compose up --build
-```
-
----
-
 ## Napster API Features Used
 
 - **WebRTC video avatar** — embedded via `@touchcastllc/napster-companion-api` Web SDK
 - **Persistent memory** — `externalClientId` per browser; agent remembers name + last service on return visits
 - **`externalClientProfile`** — passes visitor name + last service to personalize greetings
-- **Explicit tool calls** — 3 tools with full invocation prompts (preamble + confirmation patterns)
+- **Explicit tool calls** — 3 tools with full invocation prompts (preamble + confirmation patterns per docs)
 - **Session tagging** — every session tagged with `source`, `business_type`, `env`
+
+---
+
+## Running Locally
+
+See [JUDGES.md](./JUDGES.md) for full local setup instructions. The short version:
+
+```bash
+git clone https://github.com/villanub/localdesk-agent.git
+cd localdesk-agent
+cp .env.example .env   # add your NAPSTER_API_KEY
+docker compose up --build
+```
+
+The backend auto-provisions the Napster agent on first boot. No manual setup steps required.
 
 ---
 
@@ -117,9 +91,9 @@ docker compose up --build
 |---|---|---|
 | `NAPSTER_API_KEY` | ✅ | Napster Omniagent API key |
 | `INTERNAL_API_SECRET` | ✅ | Authenticates Napster → backend webhooks |
-| `BACKEND_PUBLIC_URL` | For tools | Public URL (ngrok or deployed) for tool webhooks |
-| `TWILIO_*` | Optional | SMS notifications to business owner |
+| `BACKEND_PUBLIC_URL` | ✅ | Public backend URL for tool webhooks (set automatically in Azure deployment) |
+| `TWILIO_*` | Optional | SMS notifications to business owner on new lead/booking |
 
 ---
 
-Built by Benjamin Villanueva · Austin, TX
+Built by Benjamin Villanueva · Austin, TX · Napster Omniagent Hackathon 2026
