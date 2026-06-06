@@ -9,7 +9,7 @@ If the live demo is working, you don't need to run anything locally.
 
 ## Option A — Use the live deployment (recommended)
 
-Everything is already deployed:
+Everything is already deployed on Azure:
 
 | Service | URL |
 |---|---|
@@ -40,6 +40,7 @@ Edit `.env` — minimum required:
 ```
 NAPSTER_API_KEY=your_key_here
 INTERNAL_API_SECRET=any_random_string
+BACKEND_PUBLIC_URL=http://localhost:3001
 ```
 
 **2. Start everything**
@@ -49,11 +50,11 @@ docker compose up --build
 
 On first boot, the backend automatically:
 - Creates the Maya companion in your Napster account
-- Registers the 3 tool webhooks
+- Registers the 3 tool webhooks (capture lead, check slots, book appointment)
 - Creates the Omniagent
-- Saves config to a Docker volume
+- Saves config to a persistent Docker volume
 
-Wait for this line before opening the browser:
+Wait for this in the logs before opening the browser:
 ```
 ✅ Agent setup complete.
 ```
@@ -61,40 +62,28 @@ Wait for this line before opening the browser:
 **3. Open the app**
 - Frontend → http://localhost:5173
 - Leads dashboard → http://localhost:3001/api/leads
+- Status → http://localhost:3001/api/status
 
-**4. Enable tool webhooks (booking)**
-
-Tools require a public URL. In a separate terminal:
-```bash
-ngrok http 3001
-```
-
-Add the URL to `.env`:
-```
-BACKEND_PUBLIC_URL=https://xxxxx.ngrok-free.app
-```
-
-Restart with a fresh volume:
-```bash
-docker compose down -v
-docker compose up
-```
+> Note: Tool webhooks (booking/lead capture) require Napster's servers to reach your
+> backend. For local testing the video agent will connect and converse, but booking
+> confirmation requires a publicly reachable backend URL. Use the live deployment
+> (Option A) for the full booking flow.
 
 ---
 
 ## Demo script
 
-**Cold visit (shows core agent)**
+**Cold visit (core agent flow)**
 1. Open the frontend
 2. Click "Talk to Maya"
 3. Ask about a HydraFacial
-4. Maya qualifies you, checks availability, and books an appointment
-5. Check http://localhost:3001/api/leads to see the captured lead
+4. Maya qualifies you, checks availability, and confirms a booking
+5. Check `/api/leads` to see the captured lead record
 
-**Return visit (shows persistent memory)**
+**Return visit (persistent memory)**
 1. Close and reopen the browser tab
 2. Click "Talk to Maya" again
-3. Maya greets you by name and references your last service — memory working
+3. Maya greets you by name and references your last service — memory in action
 
 ---
 
@@ -103,9 +92,9 @@ docker compose up
 | Feature | Where |
 |---|---|
 | WebRTC video avatar | Frontend — Maya appears as a live video agent |
-| Persistent memory | Return visit — agent remembers name + last service |
-| `externalClientProfile` | Session init — passes visitor context to agent |
-| Explicit tool calls | Booking flow — 3 webhooks fire to backend |
+| Persistent memory | Return visit — agent remembers name + last service across sessions |
+| `externalClientProfile` | Session init — passes visitor context to personalize greetings |
+| Explicit tool calls | Booking flow — 3 webhooks fire to Azure backend |
 | Session tagging | Every session tagged with `source`, `business_type`, `env` |
 
 ---
@@ -113,16 +102,16 @@ docker compose up
 ## Architecture
 
 ```
-Azure Static Web App (frontend)
+Azure Static Web App (React frontend)
         │  HTTPS
         ▼
-Azure Container App (backend — Node/Express)
-        │  Explicit tool webhooks
+Azure Container App (Node/Express backend)
+        │  Explicit tool webhooks (HTTPS POST)
         ▼
 Napster Omniagent API
-        │  WebRTC
+        │  WebRTC / WebSocket
         ▼
-Browser (Napster Web SDK — video avatar)
+Browser (Napster Web SDK — live video avatar)
 ```
 
 ---
