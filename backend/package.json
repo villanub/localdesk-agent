@@ -10,10 +10,10 @@
     "setup": "node setup.js"
   },
   "dependencies": {
-    "better-sqlite3": "^9.6.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "lowdb": "^7.0.1",
     "node-fetch": "^3.3.2",
     "twilio": "^5.2.1",
     "uuid": "^10.0.0"

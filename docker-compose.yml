@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   backend:
     build:
@@ -16,6 +14,7 @@ services:
       - BUSINESS_OWNER_PHONE=${BUSINESS_OWNER_PHONE:-}
     volumes:
       - localdesk_data:/app/data
+      - ./.agent-config.json:/app/.agent-config.json:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 10s

@@ -1,14 +1,14 @@
 # Backend-specific ignores (node_modules etc. caught by root .gitignore)
 
+# Local .env copy (source of truth is root .env)
+.env
+
 # Agent config written by setup.js — API IDs, never commit
 .agent-config.json
 
-# SQLite database files
-*.db
-*.db-journal
-*.db-shm
-*.db-wal
+# lowdb JSON database and local data directory
 data/
+*.json.bak
 
 # TypeScript (if added later)
 *.js.map

@@ -8,6 +8,7 @@
  *   3. An Omniagent that ties them together
  *
  * Writes the resulting IDs to .agent-config.json so server.js can use them.
+ * Safe to re-run — deletes existing tools by name before recreating.
  */
 
 import "dotenv/config";
@@ -20,12 +21,9 @@ const HEADERS = {
   "Content-Type": "application/json",
 };
 
-// The backend URL Napster will POST tool calls to.
-// In Docker, Napster calls your *public* backend URL.
-// For local dev / judging, you can use ngrok or a public IP.
-// Set BACKEND_PUBLIC_URL in .env, else falls back to localhost (won't work for tools from Napster).
 const BACKEND_URL = process.env.BACKEND_PUBLIC_URL || "http://localhost:3001";
 const TOOL_SECRET = process.env.INTERNAL_API_SECRET || "change_me";
+const TOOL_NAMES = ["capture_lead", "check_slots", "book_appointment"];
 
 async function api(method, path, body) {
   const res = await fetch(`${BASE}${path}`, {
@@ -33,7 +31,8 @@ async function api(method, path, body) {
     headers: HEADERS,
     body: body ? JSON.stringify(body) : undefined,
   });
-  const json = await res.json();
+  if (method === "DELETE" && res.status === 404) return null; // already gone
+  const json = await res.json().catch(() => null);
   if (!res.ok) {
     console.error("API error:", JSON.stringify(json, null, 2));
     throw new Error(`${method} ${path} → ${res.status}`);
@@ -41,8 +40,25 @@ async function api(method, path, body) {
   return json;
 }
 
+async function deleteExistingTools() {
+  console.log("Cleaning up existing tools...");
+  for (const name of TOOL_NAMES) {
+    try {
+      await api("DELETE", `/functions/${name}`);
+      console.log(`  ✓ Deleted tool: ${name}`);
+    } catch {
+      console.log(`  - Tool not found, skipping: ${name}`);
+    }
+  }
+  console.log();
+}
+
 async function main() {
   console.log("🚀 LocalDesk — Napster Omniagent Setup\n");
+  console.log(`   Backend URL: ${BACKEND_URL}\n`);
+
+  // ── 0. Clean up old tools ────────────────────────────────────────────────
+  await deleteExistingTools();
 
   // ── 1. Create companion ──────────────────────────────────────────────────
   console.log("Creating companion...");
@@ -80,8 +96,7 @@ async function main() {
           },
           service_interest: {
             type: "string",
-            description:
-              "The service or treatment the visitor is most interested in",
+            description: "The service or treatment the visitor is most interested in",
           },
         },
         required: ["visitor_id", "name", "phone", "service_interest"],
@@ -143,8 +158,7 @@ async function main() {
           name: { type: "string", description: "Visitor's full name" },
           slot: {
             type: "string",
-            description:
-              "The exact slot string the visitor chose (e.g. 'Tuesday at 2:30 PM')",
+            description: "The exact slot string the visitor chose (e.g. 'Tuesday at 2:30 PM')",
           },
           service: {
             type: "string",
@@ -189,12 +203,13 @@ async function main() {
       checkSlotsId: checkSlotsTool.id,
       bookApptId: bookApptTool.id,
     },
+    backendUrl: BACKEND_URL,
     createdAt: new Date().toISOString(),
   };
 
   writeFileSync(".agent-config.json", JSON.stringify(config, null, 2));
   console.log("✅ Config saved to .agent-config.json");
-  console.log("\nRun `docker compose up --build` to start LocalDesk.\n");
+  console.log("\nNext: copy .agent-config.json to project root, then run `docker compose up`\n");
   console.log(JSON.stringify(config, null, 2));
 }
 

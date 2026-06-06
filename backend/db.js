@@ -1,58 +1,63 @@
-import Database from "better-sqlite3";
-import path from "path";
+/**
+ * db.js — lightweight JSON file database using lowdb (zero native deps).
+ * Data is persisted to /app/data/localdesk.json inside Docker,
+ * or ./data/localdesk.json locally.
+ */
+
+import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { mkdirSync, existsSync } from "fs";
+import { Low } from "lowdb";
+import { JSONFile } from "lowdb/node";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.join("/app/data", "localdesk.db");
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
-let db;
+// Use /app/data inside Docker (volume mount), fallback to local ./data
+const DATA_DIR = existsSync("/app/data") ? "/app/data" : join(__dirname, "data");
+mkdirSync(DATA_DIR, { recursive: true });
 
-export function getDb() {
-  if (!db) {
-    db = new Database(DB_PATH);
-    db.pragma("journal_mode = WAL");
-    migrate(db);
-  }
-  return db;
-}
+const DB_PATH = join(DATA_DIR, "localdesk.json");
 
-function migrate(db) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS leads (
-      id          TEXT PRIMARY KEY,
-      visitor_id  TEXT NOT NULL,
-      name        TEXT,
-      phone       TEXT,
-      email       TEXT,
-      service     TEXT,
-      slot        TEXT,
-      status      TEXT DEFAULT 'new',
-      notes       TEXT,
-      created_at  TEXT DEFAULT (datetime('now')),
-      updated_at  TEXT DEFAULT (datetime('now'))
-    );
+// Default schema
+const defaultData = {
+  leads: [],
+  slots: [],
+};
 
-    CREATE TABLE IF NOT EXISTS available_slots (
-      id        INTEGER PRIMARY KEY AUTOINCREMENT,
-      slot_time TEXT NOT NULL,
-      service   TEXT,
-      taken     INTEGER DEFAULT 0
-    );
-  `);
+let dbInstance = null;
+
+export async function getDb() {
+  if (dbInstance) return dbInstance;
+
+  const adapter = new JSONFile(DB_PATH);
+  const db = new Low(adapter, defaultData);
+  await db.read();
 
   // Seed slots if empty
-  const count = db.prepare("SELECT COUNT(*) as c FROM available_slots").get();
-  if (count.c === 0) {
-    const insert = db.prepare(
-      "INSERT INTO available_slots (slot_time, service) VALUES (?, ?)"
-    );
+  if (db.data.slots.length === 0) {
     const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
     const times = ["10:00 AM", "11:30 AM", "1:00 PM", "2:30 PM", "4:00 PM"];
-    const services = ["HydraFacial", "Botox Consultation", "Laser Treatment", "Filler Consultation", "Chemical Peel"];
+    const services = [
+      "HydraFacial",
+      "Botox Consultation",
+      "Laser Treatment",
+      "Filler Consultation",
+      "Chemical Peel",
+    ];
+    let id = 1;
     for (const day of days) {
       for (let i = 0; i < times.length; i++) {
-        insert.run(`${day} at ${times[i]}`, services[i % services.length]);
+        db.data.slots.push({
+          id: id++,
+          slot_time: `${day} at ${times[i]}`,
+          service: services[i % services.length],
+          taken: false,
+        });
       }
     }
+    await db.write();
   }
+
+  dbInstance = db;
+  return db;
 }

@@ -4,10 +4,6 @@ import "@touchcastllc/napster-companion-api/styles";
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
 
-/**
- * getOrCreateVisitorId — stable anonymous ID persisted in localStorage.
- * This is the externalClientId passed to Napster — enables cross-session memory.
- */
 function getOrCreateVisitorId() {
   let id = localStorage.getItem("ld_visitor_id");
   if (!id) {
@@ -37,38 +33,47 @@ export default function AgentWidget({ onActivate }) {
       const visitorId = getOrCreateVisitorId();
       const { name, lastService } = getVisitorProfile();
 
-      // Ask our backend to provision a Napster session token
+      console.log("[LocalDesk] Requesting session from backend...");
+
       const res = await fetch(`${BACKEND}/api/session`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Bypass ngrok browser warning page on first request
+          "ngrok-skip-browser-warning": "true",
+        },
         body: JSON.stringify({ visitorId, visitorName: name, lastService }),
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Failed to start session");
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(err.error || `Session request failed: ${res.status}`);
       }
 
-      const { token } = await res.json();
+      const { token, connectionId } = await res.json();
+      console.log("[LocalDesk] Session token received, connectionId:", connectionId);
 
-      // Mount the Napster Web SDK into our container
+      if (!token) throw new Error("No token returned from backend");
+
       if (!containerRef.current) throw new Error("Container not ready");
 
+      console.log("[LocalDesk] Initializing Napster SDK...");
       const instance = await NapsterCompanionApiSdk.init(token, {
         mountContainer: containerRef.current,
         position: "fill",
       });
+
       sdkRef.current = instance;
       setStatus("active");
       if (onActivate) onActivate();
+      console.log("[LocalDesk] SDK initialized successfully");
     } catch (err) {
-      console.error("[AgentWidget]", err);
+      console.error("[LocalDesk] Session error:", err);
       setErrorMsg(err.message || "Something went wrong. Please try again.");
       setStatus("error");
     }
   }
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       sdkRef.current?.destroy?.();
@@ -114,7 +119,6 @@ export default function AgentWidget({ onActivate }) {
         </div>
       )}
 
-      {/* SDK mounts here when active */}
       <div
         ref={containerRef}
         className="sdk-container"

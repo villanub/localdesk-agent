@@ -2,15 +2,13 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install curl for healthcheck
 RUN apk add --no-cache curl
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 COPY . .
 
-# Data directory for SQLite
 RUN mkdir -p /app/data
 
 EXPOSE 3001

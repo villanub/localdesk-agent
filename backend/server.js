@@ -25,7 +25,10 @@ const TOOL_SECRET = process.env.INTERNAL_API_SECRET || "change_me";
 const BASE = "https://companion-api.napster.com/public";
 
 // ── Middleware ──────────────────────────────────────────────────────────────
-app.use(cors());
+app.use(cors({
+  origin: "*",
+  allowedHeaders: ["Content-Type", "ngrok-skip-browser-warning", "x-internal-secret"],
+}));
 app.use(express.json());
 
 // ── Load agent config (written by setup.js) ─────────────────────────────────
@@ -68,7 +71,7 @@ async function sendSms(body) {
   const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER, BUSINESS_OWNER_PHONE } =
     process.env;
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM_NUMBER || !BUSINESS_OWNER_PHONE) {
-    console.log("[SMS] Twilio not configured, skipping. Message would be:", body);
+    console.log("[SMS] Twilio not configured, skipping. Message:", body);
     return;
   }
   try {
@@ -93,9 +96,6 @@ app.get("/health", (req, res) => res.json({ status: "ok" }));
 /**
  * POST /api/session
  * Body: { visitorId, visitorName?, lastService? }
- *
- * Provisions a Napster WebRTC session and returns the token to the frontend.
- * The visitorId is the externalClientId — enables persistent memory.
  */
 app.post("/api/session", async (req, res) => {
   const config = loadAgentConfig();
@@ -104,12 +104,8 @@ app.post("/api/session", async (req, res) => {
   }
 
   const { visitorId, visitorName, lastService } = req.body;
+  if (!visitorId) return res.status(400).json({ error: "visitorId is required" });
 
-  if (!visitorId) {
-    return res.status(400).json({ error: "visitorId is required" });
-  }
-
-  // Build optional profile context
   const externalClientProfile = {};
   if (visitorName) externalClientProfile.name = visitorName;
   if (lastService) externalClientProfile.lastService = lastService;
@@ -143,113 +139,116 @@ app.post("/api/session", async (req, res) => {
 
 /**
  * POST /tools/capture-lead
- * Napster explicit tool webhook — saves lead to DB and sends SMS to owner.
  */
-app.post("/tools/capture-lead", requireToolSecret, (req, res) => {
+app.post("/tools/capture-lead", requireToolSecret, async (req, res) => {
   const { visitor_id, name, phone, email, service_interest } = req.body?.arguments || req.body;
-  const db = getDb();
 
-  const id = uuidv4();
-  db.prepare(`
-    INSERT INTO leads (id, visitor_id, name, phone, email, service, status)
-    VALUES (?, ?, ?, ?, ?, ?, 'new')
-  `).run(id, visitor_id || "unknown", name, phone, email || null, service_interest);
+  const db = await getDb();
+  const lead = {
+    id: uuidv4(),
+    visitor_id: visitor_id || "unknown",
+    name,
+    phone,
+    email: email || null,
+    service: service_interest,
+    slot: null,
+    status: "new",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  db.data.leads.push(lead);
+  await db.write();
 
   console.log(`[lead captured] ${name} | ${phone} | ${service_interest}`);
-
-  // Fire-and-forget SMS
   sendSms(`🔔 New LocalDesk lead!\nName: ${name}\nPhone: ${phone}\nInterested in: ${service_interest}`);
 
   res.json({
     success: true,
     message: `Thanks ${name}! I've saved your details. Let me check what appointments we have available.`,
-    lead_id: id,
+    lead_id: lead.id,
   });
 });
 
 /**
  * POST /tools/check-slots
- * Returns up to 5 available slots for a given service.
  */
-app.post("/tools/check-slots", requireToolSecret, (req, res) => {
+app.post("/tools/check-slots", requireToolSecret, async (req, res) => {
   const { service } = req.body?.arguments || req.body;
-  const db = getDb();
 
-  const slots = db
-    .prepare(`
-      SELECT slot_time FROM available_slots
-      WHERE taken = 0
-      ORDER BY id
-      LIMIT 5
-    `)
-    .all();
+  const db = await getDb();
+  const available = db.data.slots.filter((s) => !s.taken).slice(0, 5);
 
-  if (slots.length === 0) {
+  if (available.length === 0) {
     return res.json({
       available: false,
       message: "We're fully booked right now — let me take your info and we'll call you to schedule.",
     });
   }
 
-  const slotList = slots.map((s) => s.slot_time).join(", ");
+  const slotList = available.map((s) => s.slot_time).join(", ");
   console.log(`[check-slots] service=${service} → ${slotList}`);
 
   res.json({
     available: true,
     service,
-    slots: slots.map((s) => s.slot_time),
+    slots: available.map((s) => s.slot_time),
     message: `Great news — here are the next available slots for ${service}: ${slotList}. Which works best for you?`,
   });
 });
 
 /**
  * POST /tools/book-appointment
- * Marks the slot as taken and updates the lead record.
  */
-app.post("/tools/book-appointment", requireToolSecret, (req, res) => {
+app.post("/tools/book-appointment", requireToolSecret, async (req, res) => {
   const { visitor_id, name, slot, service } = req.body?.arguments || req.body;
-  const db = getDb();
+
+  const db = await getDb();
 
   // Mark slot taken
-  db.prepare(`
-    UPDATE available_slots SET taken = 1 WHERE slot_time = ? AND taken = 0
-  `).run(slot);
+  const slotRecord = db.data.slots.find((s) => s.slot_time === slot && !s.taken);
+  if (slotRecord) {
+    slotRecord.taken = true;
+  }
 
-  // Update lead record if it exists
-  db.prepare(`
-    UPDATE leads SET slot = ?, status = 'booked', updated_at = datetime('now')
-    WHERE visitor_id = ? AND status = 'new'
-    ORDER BY created_at DESC LIMIT 1
-  `).run(slot, visitor_id || "unknown");
+  // Update lead record
+  const lead = db.data.leads
+    .filter((l) => l.visitor_id === (visitor_id || "unknown") && l.status === "new")
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
 
-  console.log(`[booked] ${name} | ${slot} | ${service}`);
+  if (lead) {
+    lead.slot = slot;
+    lead.status = "booked";
+    lead.updated_at = new Date().toISOString();
+  }
 
-  // Fire-and-forget SMS
-  sendSms(`✅ Booking confirmed!\nName: ${name}\nService: ${service}\nSlot: ${slot}`);
+  await db.write();
+
+  const confirmationCode = `LD-${Date.now().toString(36).toUpperCase()}`;
+  console.log(`[booked] ${name} | ${slot} | ${service} | ${confirmationCode}`);
+  sendSms(`✅ Booking confirmed!\nName: ${name}\nService: ${service}\nSlot: ${slot}\nCode: ${confirmationCode}`);
 
   res.json({
     success: true,
-    confirmation_code: `LD-${Date.now().toString(36).toUpperCase()}`,
+    confirmation_code: confirmationCode,
     message: `You're all set, ${name}! Your ${service} appointment is confirmed for ${slot}. We'll send a reminder to your phone. We can't wait to see you!`,
   });
 });
 
 /**
  * GET /api/leads
- * Returns all leads — for the internal dashboard and demo.
  */
-app.get("/api/leads", (req, res) => {
-  const db = getDb();
-  const leads = db
-    .prepare("SELECT * FROM leads ORDER BY created_at DESC LIMIT 100")
-    .all();
+app.get("/api/leads", async (req, res) => {
+  const db = await getDb();
+  const leads = [...db.data.leads]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 100);
   res.json(leads);
 });
 
 // ── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n🏢 LocalDesk backend running on port ${PORT}`);
-  console.log(`   Health:     http://localhost:${PORT}/health`);
-  console.log(`   Session:    POST http://localhost:${PORT}/api/session`);
-  console.log(`   Leads:      http://localhost:${PORT}/api/leads\n`);
+  console.log(`   Health:  http://localhost:${PORT}/health`);
+  console.log(`   Session: POST http://localhost:${PORT}/api/session`);
+  console.log(`   Leads:   http://localhost:${PORT}/api/leads\n`);
 });
