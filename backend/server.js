@@ -33,7 +33,11 @@ app.use(express.json());
 
 // ── Load agent config (written by setup.js) ─────────────────────────────────
 function loadAgentConfig() {
-  const paths = [".agent-config.json", "/app/.agent-config.json"];
+  const paths = [
+    "/app/data/.agent-config.json", // Docker volume (written by entrypoint)
+    ".agent-config.json",           // local dev
+    "/app/.agent-config.json",      // legacy
+  ];
   for (const p of paths) {
     if (existsSync(p)) {
       return JSON.parse(readFileSync(p, "utf-8"));
@@ -92,6 +96,20 @@ async function sendSms(body) {
 
 // Health check
 app.get("/health", (req, res) => res.json({ status: "ok" }));
+
+// Status — lets frontend know if agent is configured and ready
+app.get("/api/status", (req, res) => {
+  const config = loadAgentConfig();
+  res.json({
+    ready: !!config,
+    agentId: config?.agentId || null,
+    backendUrl: config?.backendUrl || null,
+    toolsEnabled: !!(config?.backendUrl && !config.backendUrl.includes("localhost")),
+    message: config
+      ? "Agent configured and ready"
+      : "Agent not configured — run setup.js first",
+  });
+});
 
 /**
  * POST /api/session

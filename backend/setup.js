@@ -207,9 +207,12 @@ async function main() {
     createdAt: new Date().toISOString(),
   };
 
-  writeFileSync(".agent-config.json", JSON.stringify(config, null, 2));
-  console.log("✅ Config saved to .agent-config.json");
-  console.log("\nNext: copy .agent-config.json to project root, then run `docker compose up`\n");
+  // Allow overriding output path via --config-path flag (used by Docker entrypoint)
+  const configPathArg = process.argv.find((a, i) => process.argv[i - 1] === "--config-path");
+  const configPath = configPathArg || ".agent-config.json";
+  writeFileSync(configPath, JSON.stringify(config, null, 2));
+  console.log(`✅ Config saved to ${configPath}`);
+  console.log("\nNext: `docker compose up` to start LocalDesk\n");
   console.log(JSON.stringify(config, null, 2));
 }
 

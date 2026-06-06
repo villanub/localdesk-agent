@@ -13,4 +13,8 @@ RUN mkdir -p /app/data
 
 EXPOSE 3001
 
-CMD ["node", "server.js"]
+# Use entrypoint script so setup.js runs automatically on first boot
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
